@@ -1,0 +1,87 @@
+Thank you for installing {{ .Chart.Name }} v{{ .Chart.Version }}!
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+=============================================================================
+COMPONENTS STATUS
+=============================================================================
+
+{{- if .Values.kafka.enabled }}
+[✓] Kafka           — {{ .Release.Name }}-kafka:9092
+{{- else }}
+[ ] Kafka           — disabled
+{{- end }}
+
+{{- if .Values.airflow.enabled }}
+[✓] Airflow         — enabled (executor: {{ .Values.airflow.executor }})
+{{- else }}
+[ ] Airflow         — disabled
+{{- end }}
+
+{{- if .Values.flinkOperator.enabled }}
+[✓] Flink Operator  — enabled
+{{- else }}
+[ ] Flink Operator  — disabled
+{{- end }}
+
+{{- if .Values.flinkJobs.enabled }}
+[✓] Flink Jobs      — session cluster: {{ include "data-platform.fullname" . }}-{{ .Values.flinkJobs.sessionCluster.name }}
+{{- else }}
+[ ] Flink Jobs      — disabled
+{{- end }}
+
+{{- if .Values.dataIngestion.enabled }}
+[✓] Data Ingestion  — {{ include "data-platform.fullname" . }}-data-ingestion:{{ .Values.dataIngestion.service.port }}
+{{- else }}
+[ ] Data Ingestion  — disabled
+{{- end }}
+
+{{- if .Values.dataProcessor.enabled }}
+[✓] Data Processor  — {{ include "data-platform.fullname" . }}-data-processor:{{ .Values.dataProcessor.service.port }}
+{{- else }}
+[ ] Data Processor  — disabled
+{{- end }}
+
+=============================================================================
+QUICK START
+=============================================================================
+
+1. Check all pods are running:
+   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+2. View service endpoints:
+   kubectl get svc -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+{{- if .Values.dataIngestion.enabled }}
+3. Port-forward data ingestion service:
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "data-platform.fullname" . }}-data-ingestion {{ .Values.dataIngestion.service.port }}:{{ .Values.dataIngestion.service.port }}
+{{- end }}
+
+{{- if .Values.kafka.enabled }}
+4. Kafka bootstrap servers:
+   {{ include "data-platform.kafkaBootstrap" . }}
+
+   To test Kafka connectivity from within the cluster:
+   kubectl run kafka-test --rm -it --image=bitnami/kafka --restart=Never -n {{ .Release.Namespace }} -- \
+     kafka-topics.sh --bootstrap-server {{ include "data-platform.kafkaBootstrap" . }} --list
+{{- end }}
+
+{{- if .Values.airflow.enabled }}
+5. Access Airflow UI:
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }}-airflow-webserver 8080:8080
+   Then open http://localhost:8080 (default credentials: admin/admin)
+{{- end }}
+
+=============================================================================
+CONFIGURATION
+=============================================================================
+
+Service Account: {{ include "data-platform.serviceAccountName" . }}
+Pipeline ConfigMap: {{ include "data-platform.fullname" . }}-pipeline-config
+
+To update configuration without redeploying:
+  helm upgrade {{ .Release.Name }} <chart> --reuse-values --set pipelineConfig.LOG_LEVEL=DEBUG
+
+For full configuration options:
+  helm show values <chart>

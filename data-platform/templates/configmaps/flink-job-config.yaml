@@ -1,0 +1,15 @@
+{{- if .Values.flinkJobs.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "data-platform.fullname" . }}-flink-job-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "data-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: flink-job-config
+data:
+  flink-conf.yaml: |
+    {{- range $key, $value := .Values.flinkJobConfig }}
+    {{ $key }}: {{ $value }}
+    {{- end }}
+{{- end }}

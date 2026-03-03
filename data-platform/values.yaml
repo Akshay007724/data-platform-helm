@@ -1,0 +1,192 @@
+# =============================================================================
+# Global settings
+# =============================================================================
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# =============================================================================
+# Service Account
+# =============================================================================
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# =============================================================================
+# RBAC
+# =============================================================================
+rbac:
+  create: true
+
+# =============================================================================
+# Kafka (bitnami/kafka)
+# =============================================================================
+kafka:
+  enabled: true
+  replicaCount: 3
+  controller:
+    replicaCount: 3
+  listeners:
+    client:
+      protocol: PLAINTEXT
+    interbroker:
+      protocol: PLAINTEXT
+  persistence:
+    enabled: true
+    size: 10Gi
+
+# =============================================================================
+# Airflow (apache-airflow/airflow)
+# =============================================================================
+airflow:
+  enabled: true
+  executor: KubernetesExecutor
+  defaultAirflowTag: "2.8.1"
+  webserverSecretKeySecretName: ""
+  dags:
+    persistence:
+      enabled: false
+    gitSync:
+      enabled: false
+  postgresql:
+    enabled: true
+
+# =============================================================================
+# Flink Operator
+# =============================================================================
+flinkOperator:
+  enabled: true
+
+# =============================================================================
+# Flink Jobs
+# =============================================================================
+flinkJobs:
+  enabled: true
+  sessionCluster:
+    name: flink-session-cluster
+    image:
+      repository: apache/flink
+      tag: "1.18-scala_2.12"
+      pullPolicy: IfNotPresent
+    jobManager:
+      replicas: 1
+      resource:
+        memory: "1024m"
+        cpu: 1
+    taskManager:
+      replicas: 2
+      resource:
+        memory: "1024m"
+        cpu: 1
+    serviceAccount: ""
+    flinkVersion: v1_18
+
+# =============================================================================
+# Data Ingestion Microservice
+# =============================================================================
+dataIngestion:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: data-platform/data-ingestion
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  env: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Data Processor Microservice
+# =============================================================================
+dataProcessor:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: data-platform/data-processor
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8081
+    targetPort: 8081
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  env: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Pipeline ConfigMap (env-var bus for all microservices)
+# =============================================================================
+pipelineConfig:
+  LOG_LEVEL: "INFO"
+  ENVIRONMENT: "production"
+  BATCH_SIZE: "1000"
+  PROCESSING_TIMEOUT_MS: "30000"
+  ENABLE_METRICS: "true"
+  METRICS_PORT: "9090"
+
+# =============================================================================
+# Kafka Client Config (.properties files)
+# =============================================================================
+kafkaClientConfig:
+  producer:
+    acks: "all"
+    retries: "3"
+    batch.size: "16384"
+    linger.ms: "1"
+    buffer.memory: "33554432"
+    compression.type: "snappy"
+    enable.idempotence: "true"
+  consumer:
+    group.id: "data-platform-consumer"
+    auto.offset.reset: "earliest"
+    enable.auto.commit: "false"
+    max.poll.records: "500"
+    session.timeout.ms: "30000"
+
+# =============================================================================
+# Flink Job Config
+# =============================================================================
+flinkJobConfig:
+  taskmanager.numberOfTaskSlots: "2"
+  parallelism.default: "2"
+  state.backend: "rocksdb"
+  state.checkpoints.dir: "s3://data-platform/flink-checkpoints"
+  state.savepoints.dir: "s3://data-platform/flink-savepoints"
+  execution.checkpointing.interval: "60000"
+  execution.checkpointing.mode: "EXACTLY_ONCE"
+  restart-strategy: "fixed-delay"
+  restart-strategy.fixed-delay.attempts: "3"
+  restart-strategy.fixed-delay.delay: "10s"

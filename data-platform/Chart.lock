@@ -1,0 +1,12 @@
+dependencies:
+- name: kafka
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 32.4.3
+- name: airflow
+  repository: https://airflow.apache.org
+  version: 1.19.0
+- name: flink-kubernetes-operator
+  repository: https://archive.apache.org/dist/flink/flink-kubernetes-operator-1.9.0/
+  version: 1.9.0
+digest: sha256:f881f932cca0ba676651a0929135d0876f4088825b5712d96eb100578ef2b191
+generated: "2026-03-03T16:53:33.859684-06:00"

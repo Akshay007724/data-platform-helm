@@ -1,0 +1,34 @@
+{{- if and .Values.dataProcessor.enabled .Values.dataProcessor.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "data-platform.fullname" . }}-data-processor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "data-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-processor
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "data-platform.fullname" . }}-data-processor
+  minReplicas: {{ .Values.dataProcessor.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.dataProcessor.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.dataProcessor.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.dataProcessor.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.dataProcessor.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.dataProcessor.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

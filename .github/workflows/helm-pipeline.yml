@@ -1,0 +1,221 @@
+name: Helm Chart Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  CHART_DIR: data-platform
+  KUBERNETES_VERSION: "1.30.0"
+  HELM_VERSION: "3.14.0"
+
+jobs:
+  # ============================================================================
+  # Stage 1: Lint
+  # ============================================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Set up Python (for chart-testing)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.6.1
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Run yamllint
+        run: |
+          yamllint -d "{extends: default, rules: {line-length: {max: 120}}}" \
+            ${{ env.CHART_DIR }}/values.yaml \
+            ${{ env.CHART_DIR }}/Chart.yaml \
+            ${{ env.CHART_DIR }}/templates/
+
+      - name: Run helm lint --strict
+        run: |
+          helm lint ${{ env.CHART_DIR }} --strict
+
+      - name: Run chart-testing lint
+        run: |
+          ct lint \
+            --chart-dirs . \
+            --charts ${{ env.CHART_DIR }} \
+            --validate-maintainers=false
+
+  # ============================================================================
+  # Stage 2: Validate
+  # ============================================================================
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Add Helm repos
+        run: |
+          helm repo add airflow-stable https://airflow.apache.org
+          helm repo add flink-operator https://archive.apache.org/dist/flink/flink-kubernetes-operator-1.9.0/
+          helm repo update
+
+      - name: Run helm dependency update
+        run: |
+          helm dependency update ${{ env.CHART_DIR }}
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin/
+
+      - name: Render templates (default — all enabled)
+        run: |
+          helm template data-platform ${{ env.CHART_DIR }} \
+            --namespace data-engineering \
+            --debug \
+            > /tmp/rendered-default.yaml
+          echo "Default render succeeded ($(wc -l < /tmp/rendered-default.yaml) lines)"
+
+      - name: Validate rendered YAML with kubeconform
+        run: |
+          kubeconform \
+            --strict \
+            --ignore-missing-schemas \
+            --kubernetes-version ${{ env.KUBERNETES_VERSION }} \
+            --skip FlinkDeployment \
+            /tmp/rendered-default.yaml
+          echo "kubeconform validation passed"
+
+      - name: Edge-case render — all components disabled
+        run: |
+          helm template data-platform ${{ env.CHART_DIR }} \
+            --namespace data-engineering \
+            --set kafka.enabled=false \
+            --set airflow.enabled=false \
+            --set flinkOperator.enabled=false \
+            --set flinkJobs.enabled=false \
+            --set dataIngestion.enabled=false \
+            --set dataProcessor.enabled=false \
+            > /tmp/rendered-all-disabled.yaml
+          echo "All-disabled render succeeded"
+          cat /tmp/rendered-all-disabled.yaml
+
+      - name: Edge-case render — kafka disabled, microservices still enabled
+        run: |
+          helm template data-platform ${{ env.CHART_DIR }} \
+            --namespace data-engineering \
+            --set kafka.enabled=false \
+            --set airflow.enabled=false \
+            --set flinkOperator.enabled=false \
+            --set flinkJobs.enabled=false \
+            > /tmp/rendered-no-kafka.yaml
+          echo "No-kafka render succeeded"
+
+      - name: Upload rendered manifests as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rendered-manifests
+          path: /tmp/rendered-*.yaml
+          retention-days: 7
+
+  # ============================================================================
+  # Stage 3: Deploy (main branch only, manual approval gate via environment)
+  # ============================================================================
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Verify cluster connectivity
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Add Helm repos
+        run: |
+          helm repo add airflow-stable https://airflow.apache.org
+          helm repo add flink-operator https://archive.apache.org/dist/flink/flink-kubernetes-operator-1.9.0/
+          helm repo update
+
+      - name: Run helm dependency update
+        run: |
+          helm dependency update ${{ env.CHART_DIR }}
+
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace data-engineering --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy with helm upgrade --install
+        run: |
+          helm upgrade --install data-platform ${{ env.CHART_DIR }} \
+            --namespace data-engineering \
+            --atomic \
+            --timeout 10m \
+            --wait \
+            --set dataIngestion.image.tag="${{ github.sha }}" \
+            --set dataProcessor.image.tag="${{ github.sha }}" \
+            --history-max 10
+
+      - name: Verify rollout — data-ingestion
+        run: |
+          kubectl rollout status deployment/data-platform-data-ingestion \
+            -n data-engineering \
+            --timeout=5m
+
+      - name: Verify rollout — data-processor
+        run: |
+          kubectl rollout status deployment/data-platform-data-processor \
+            -n data-engineering \
+            --timeout=5m
+
+      - name: Print helm status
+        if: always()
+        run: |
+          helm status data-platform --namespace data-engineering || true
+
+      - name: Print pod status
+        if: always()
+        run: |
+          kubectl get pods -n data-engineering -l app.kubernetes.io/instance=data-platform || true

@@ -1,0 +1,21 @@
+{{- if .Values.kafka.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "data-platform.fullname" . }}-kafka-client-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "data-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka-client-config
+data:
+  producer.properties: |
+    bootstrap.servers={{ include "data-platform.kafkaBootstrap" . }}
+    {{- range $key, $value := .Values.kafkaClientConfig.producer }}
+    {{ $key }}={{ $value }}
+    {{- end }}
+  consumer.properties: |
+    bootstrap.servers={{ include "data-platform.kafkaBootstrap" . }}
+    {{- range $key, $value := .Values.kafkaClientConfig.consumer }}
+    {{ $key }}={{ $value }}
+    {{- end }}
+{{- end }}

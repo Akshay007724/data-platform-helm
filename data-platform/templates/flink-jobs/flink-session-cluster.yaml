@@ -1,0 +1,47 @@
+{{- if .Values.flinkJobs.enabled }}
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: {{ include "data-platform.fullname" . }}-{{ .Values.flinkJobs.sessionCluster.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "data-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: flink-session-cluster
+  annotations:
+    checksum/config: {{ include (print $.Template.BasePath "/configmaps/flink-job-config.yaml") . | sha256sum }}
+spec:
+  image: "{{ .Values.flinkJobs.sessionCluster.image.repository }}:{{ .Values.flinkJobs.sessionCluster.image.tag }}"
+  imagePullPolicy: {{ .Values.flinkJobs.sessionCluster.image.pullPolicy }}
+  flinkVersion: {{ .Values.flinkJobs.sessionCluster.flinkVersion }}
+  flinkConfiguration:
+    {{- range $key, $value := .Values.flinkJobConfig }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  serviceAccount: {{ default (include "data-platform.serviceAccountName" .) .Values.flinkJobs.sessionCluster.serviceAccount }}
+  podTemplate:
+    spec:
+      containers:
+        - name: flink-main-container
+          envFrom:
+            - configMapRef:
+                name: {{ include "data-platform.fullname" . }}-pipeline-config
+          volumeMounts:
+            - name: flink-job-config
+              mountPath: /opt/flink/conf/flink-conf.yaml
+              subPath: flink-conf.yaml
+              readOnly: true
+      volumes:
+        - name: flink-job-config
+          configMap:
+            name: {{ include "data-platform.fullname" . }}-flink-job-config
+  jobManager:
+    replicas: {{ .Values.flinkJobs.sessionCluster.jobManager.replicas }}
+    resource:
+      memory: {{ .Values.flinkJobs.sessionCluster.jobManager.resource.memory | quote }}
+      cpu: {{ .Values.flinkJobs.sessionCluster.jobManager.resource.cpu }}
+  taskManager:
+    replicas: {{ .Values.flinkJobs.sessionCluster.taskManager.replicas }}
+    resource:
+      memory: {{ .Values.flinkJobs.sessionCluster.taskManager.resource.memory | quote }}
+      cpu: {{ .Values.flinkJobs.sessionCluster.taskManager.resource.cpu }}
+{{- end }}

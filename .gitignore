@@ -1,0 +1,8 @@
+# Helm dependency tarballs (fetched by helm dep update)
+data-platform/charts/*.tgz
+
+# macOS
+.DS_Store
+
+# Claude Code session files
+.claude/
