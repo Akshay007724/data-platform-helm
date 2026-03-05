@@ -4,20 +4,24 @@ on:
   pull_request:
     branches: [master]
     paths:
-      - "Chart.yaml"
-      - "Chart.lock"
-      - "values.yaml"
-      - "values-images.yaml"
-      - "templates/**"
+      - "data-platform/Chart.yaml"
+      - "data-platform/Chart.lock"
+      - "data-platform/values.yaml"
+      - "data-platform/values-images.yaml"
+      - "data-platform/templates/**"
       - ".github/workflows/helm-lint.yml"
   push:
     branches: [master]
     paths:
-      - "Chart.yaml"
-      - "Chart.lock"
-      - "values.yaml"
-      - "values-images.yaml"
-      - "templates/**"
+      - "data-platform/Chart.yaml"
+      - "data-platform/Chart.lock"
+      - "data-platform/values.yaml"
+      - "data-platform/values-images.yaml"
+      - "data-platform/templates/**"
+
+defaults:
+  run:
+    working-directory: data-platform
 
 jobs:
   lint:
@@ -26,7 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Fetch chart dependencies stored as .tgz in charts/
           fetch-depth: 0
 
       - name: Set up Helm

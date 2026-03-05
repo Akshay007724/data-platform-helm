@@ -5,16 +5,15 @@ on:
     branches: [master]
     tags: ["v*.*.*"]
     paths:
-      - "services/data-ingestion/**"
-      - "services/data-processor/**"
+      - "data-platform/services/data-ingestion/**"
+      - "data-platform/services/data-processor/**"
       - ".github/workflows/platform-services.yml"
   pull_request:
     branches: [master]
     paths:
-      - "services/data-ingestion/**"
-      - "services/data-processor/**"
+      - "data-platform/services/data-ingestion/**"
+      - "data-platform/services/data-processor/**"
       - ".github/workflows/platform-services.yml"
-  # Allow manual trigger to rebuild and re-pin without a code change
   workflow_dispatch:
     inputs:
       service:
@@ -37,9 +36,9 @@ jobs:
         with:
           filters: |
             data-ingestion:
-              - 'services/data-ingestion/**'
+              - 'data-platform/services/data-ingestion/**'
             data-processor:
-              - 'services/data-processor/**'
+              - 'data-platform/services/data-processor/**'
 
   # ─── Build & push data-ingestion ─────────────────────────────────────────────
   build-data-ingestion:
@@ -87,7 +86,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: services/data-ingestion
+          context: data-platform/services/data-ingestion
           push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -140,7 +139,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: services/data-processor
+          context: data-platform/services/data-processor
           push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -151,7 +150,6 @@ jobs:
   update-image-tags:
     name: Update image tags (GitOps)
     needs: [build-data-ingestion, build-data-processor]
-    # Run even if only one of the two build jobs ran (the other is skipped, not failed)
     if: |
       always() &&
       github.ref == 'refs/heads/master' &&
@@ -175,23 +173,22 @@ jobs:
         if: needs.build-data-ingestion.result == 'success'
         run: |
           SHORT_SHA=${{ needs.build-data-ingestion.outputs.short-sha }}
-          yq -i ".dataIngestion.image.repository = \"ghcr.io/${{ github.repository_owner }}/data-platform/data-ingestion\"" values-images.yaml
-          yq -i ".dataIngestion.image.tag = \"sha-${SHORT_SHA}\"" values-images.yaml
+          yq -i ".dataIngestion.image.repository = \"ghcr.io/${{ github.repository_owner }}/data-platform/data-ingestion\"" data-platform/values-images.yaml
+          yq -i ".dataIngestion.image.tag = \"sha-${SHORT_SHA}\"" data-platform/values-images.yaml
 
       - name: Update data-processor tag
         if: needs.build-data-processor.result == 'success'
         run: |
           SHORT_SHA=${{ needs.build-data-processor.outputs.short-sha }}
-          yq -i ".dataProcessor.image.repository = \"ghcr.io/${{ github.repository_owner }}/data-platform/data-processor\"" values-images.yaml
-          yq -i ".dataProcessor.image.tag = \"sha-${SHORT_SHA}\"" values-images.yaml
+          yq -i ".dataProcessor.image.repository = \"ghcr.io/${{ github.repository_owner }}/data-platform/data-processor\"" data-platform/values-images.yaml
+          yq -i ".dataProcessor.image.tag = \"sha-${SHORT_SHA}\"" data-platform/values-images.yaml
 
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add values-images.yaml
+          git add data-platform/values-images.yaml
           git diff --staged --quiet && exit 0
           git commit -m "ci(platform): update service image tags [sha: $(echo ${{ github.sha }} | head -c 7)]"
-          # Rebase on top of any remote commits before pushing to avoid rejections
           git pull --rebase origin master
           git push
