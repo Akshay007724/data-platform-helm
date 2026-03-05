@@ -15,7 +15,7 @@ spec:
   project: data-platform
 
   source:
-    repoURL: https://github.com/Akshay007724/data-platform.git
+    repoURL: https://github.com/akshay007724/data-platform.git
     targetRevision: master
     path: .   # Helm chart is at the repo root
 

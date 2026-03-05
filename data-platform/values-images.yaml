@@ -6,12 +6,12 @@
 
 dataIngestion:
   image:
-    repository: ghcr.io/Akshay007724/data-platform/data-ingestion
+    repository: ghcr.io/akshay007724/data-platform/data-ingestion
     tag: "latest"
     pullPolicy: Always
 
 dataProcessor:
   image:
-    repository: ghcr.io/Akshay007724/data-platform/data-processor
+    repository: ghcr.io/akshay007724/data-platform/data-processor
     tag: "latest"
     pullPolicy: Always
