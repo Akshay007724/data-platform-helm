@@ -11,7 +11,7 @@ spec:
 
   # Only this repo is a valid source
   sourceRepos:
-    - https://github.com/your-org/data-platform.git
+    - https://github.com/Akshay007724/data-platform-helm.git
 
   # Allowed destination clusters and namespaces
   destinations:

@@ -190,5 +190,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add values-images.yaml
-          git diff --staged --quiet || git commit -m "ci(platform): update service image tags [sha: $(echo ${{ github.sha }} | head -c 7)]"
+          git diff --staged --quiet && exit 0
+          git commit -m "ci(platform): update service image tags [sha: $(echo ${{ github.sha }} | head -c 7)]"
+          # Rebase on top of any remote commits before pushing to avoid rejections
+          git pull --rebase origin master
           git push

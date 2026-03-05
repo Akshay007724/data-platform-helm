@@ -125,5 +125,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add apps/document-processor/docker-compose.prod.yml
-          git diff --staged --quiet || git commit -m "ci(document-processor): pin image to sha-${{ needs.build-push.outputs.short-sha }}"
+          git diff --staged --quiet && exit 0
+          git commit -m "ci(document-processor): pin image to sha-${{ needs.build-push.outputs.short-sha }}"
+          # Rebase on top of any remote commits before pushing to avoid rejections
+          git pull --rebase origin master
           git push

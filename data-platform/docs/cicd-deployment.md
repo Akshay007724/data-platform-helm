@@ -152,7 +152,7 @@ If the repo is private, add a deploy key or PAT:
 # Via the ArgoCD CLI (install from https://argo-cd.readthedocs.io/en/stable/cli_installation/)
 argocd login localhost:8080 --username admin --insecure
 
-argocd repo add https://github.com/your-org/data-platform.git \
+argocd repo add https://github.com/Akshay007724/data-platform-helm.git \
   --username your-github-username \
   --password <github-pat-with-repo-read-scope>
 ```
