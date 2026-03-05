@@ -541,7 +541,7 @@
                 </div>`).join('');
             } else if (payload.type === 'token') {
               const token = payload.data;
-              // Handle <think>…</think> blocks from DeepSeek-R1
+              // Handle <think>…</think> blocks (DeepSeek-R1 style)
               if (token.includes('<think>')) inThink = true;
               if (inThink) {
                 const span = document.createElement('span');
@@ -552,10 +552,14 @@
                 answerBox.appendChild(document.createTextNode(token));
               }
               if (token.includes('</think>')) inThink = false;
+            } else if (payload.type === 'error') {
+              answerBox.style.color = 'var(--error)';
+              answerBox.textContent = 'LLM error: ' + payload.data;
             }
           }
         }
       } catch (err) {
+        answerBox.style.color = 'var(--error)';
         answerBox.textContent = 'Error: ' + err.message;
       } finally {
         btn.disabled = false;

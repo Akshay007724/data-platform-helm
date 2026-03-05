@@ -152,7 +152,7 @@ All variables have defaults; only override what you need.
 | `CHUNK_OVERLAP` | `64` | Token overlap between chunks |
 | `MAX_WORKERS` | `50` | Thread pool size for CPU-bound work |
 | `OLLAMA_URL` | `http://ollama:11434` | Ollama base URL |
-| `LLM_MODEL` | `deepseek-r1:1.5b` | Model to pull and serve |
+| `LLM_MODEL` | `qwen2.5:0.5b` | Model to pull and serve |
 | `RAG_CONTEXT_CHUNKS` | `5` | Top-k chunks passed to the LLM |
 
 ### Volumes

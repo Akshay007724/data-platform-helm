@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = 64
 
     ollama_url: str = "http://ollama:11434"
-    llm_model: str = "deepseek-r1:1.5b"
+    llm_model: str = "qwen2.5:0.5b"
     rag_context_chunks: int = 5
 
 

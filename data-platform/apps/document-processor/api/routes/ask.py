@@ -1,10 +1,13 @@
 import json
+import logging
 
 from fastapi import APIRouter
 from fastapi.requests import Request
 from fastapi.responses import StreamingResponse
 
 from models.schemas import AskRequest, SourceReference
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["ask"])
 
@@ -47,8 +50,12 @@ async def ask(body: AskRequest, request: Request) -> StreamingResponse:
 
     async def event_stream():
         yield f"data: {json.dumps({'type': 'sources', 'data': [s.model_dump() for s in sources]})}\n\n"
-        async for token in llm_service.stream_answer(body.question, reranked):
-            yield f"data: {json.dumps({'type': 'token', 'data': token})}\n\n"
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        try:
+            async for token in llm_service.stream_answer(body.question, reranked):
+                yield f"data: {json.dumps({'type': 'token', 'data': token})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as exc:
+            logger.error("LLM stream failed: %s", exc)
+            yield f"data: {json.dumps({'type': 'error', 'data': str(exc)})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
