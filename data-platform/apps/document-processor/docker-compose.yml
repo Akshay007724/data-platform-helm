@@ -1,0 +1,43 @@
+services:
+  chromadb:
+    image: chromadb/chroma:0.6.3
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      IS_PERSISTENT: "TRUE"
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+      SQLITE_PATH: /app/data/documents.db
+      HF_HOME: /app/hf_cache
+      LOG_LEVEL: INFO
+      OLLAMA_URL: http://ollama:11434
+      LLM_MODEL: deepseek-r1:1.5b
+      RAG_CONTEXT_CHUNKS: 5
+    volumes:
+      - app_data:/app/data
+      - hf_cache:/app/hf_cache   # persists gte-Qwen2 across restarts
+    depends_on:
+      - chromadb
+      - ollama
+    restart: on-failure
+
+volumes:
+  chroma_data:
+  app_data:
+  hf_cache:
+  ollama_data:

@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document Processor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d14;
+      --surface: #14141f;
+      --surface2: #1c1c2e;
+      --border: #2a2a42;
+      --accent: #7c5cfc;
+      --accent-hover: #9b7dff;
+      --text: #e2e2f0;
+      --muted: #7878a0;
+      --success: #4ade80;
+      --error: #f87171;
+      --warning: #facc15;
+      --radius: 10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    header h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    header .dot {
+      width: 8px; height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+    }
+
+    main {
+      flex: 1;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 32px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 36px;
+    }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: var(--surface);
+    }
+    .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(124,92,252,0.06);
+    }
+    .upload-zone p { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+    .upload-zone .icon { font-size: 2.4rem; }
+    #file-input { display: none; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--text); }
+
+    .upload-actions { margin-top: 16px; display: flex; gap: 10px; justify-content: center; }
+
+    /* Docs grid */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .section-header h2 { font-size: 1rem; font-weight: 600; }
+
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .doc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+      transition: border-color 0.2s;
+    }
+    .doc-card:hover { border-color: var(--accent); }
+
+    .doc-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge-pending   { background: rgba(120,120,160,0.15); color: var(--muted); }
+    .badge-processing{ background: rgba(250,204,21,0.12);  color: var(--warning); }
+    .badge-ready     { background: rgba(74,222,128,0.12);  color: var(--success); }
+    .badge-error     { background: rgba(248,113,113,0.12); color: var(--error); }
+
+    .doc-meta { font-size: 0.75rem; color: var(--muted); }
+
+    .doc-delete {
+      position: absolute;
+      top: 10px; right: 10px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.9rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .doc-delete:hover { color: var(--error); background: rgba(248,113,113,0.1); }
+
+    /* Search */
+    .search-bar {
+      display: flex;
+      gap: 10px;
+    }
+    .search-bar input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-bar input:focus { border-color: var(--accent); }
+    .search-bar input::placeholder { color: var(--muted); }
+
+    .results { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+
+    .result-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .result-meta {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .result-score {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .result-snippet {
+      font-size: 0.84rem;
+      color: var(--text);
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+
+    /* Ask / Q&A */
+    .answer-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin-top: 14px;
+      font-size: 0.875rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      min-height: 60px;
+    }
+    .answer-box .think {
+      color: var(--muted);
+      font-style: italic;
+    }
+    .sources-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .source-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.8rem;
+    }
+    .source-card .source-meta {
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .source-card .source-snippet {
+      color: var(--muted);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid transparent;
+      border-top-color: var(--warning);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast-container {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 1000;
+    }
+
+    .toast {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      animation: slideIn 0.2s ease;
+    }
+    @keyframes slideIn { from { transform: translateY(12px); opacity: 0; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="dot"></div>
+    <h1>Document Processor</h1>
+  </header>
+
+  <main>
+    <!-- Upload -->
+    <section>
+      <div class="upload-zone" id="drop-zone">
+        <div class="icon">📄</div>
+        <p>Drop PDF, Excel, or Word files here</p>
+        <div class="upload-actions">
+          <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
+            Browse files
+          </button>
+        </div>
+      </div>
+      <input type="file" id="file-input" multiple accept=".pdf,.xlsx,.xls,.docx,.doc" />
+    </section>
+
+    <!-- Documents -->
+    <section>
+      <div class="section-header">
+        <h2>Documents</h2>
+        <button class="btn btn-ghost" onclick="loadDocs()">Refresh</button>
+      </div>
+      <div class="docs-grid" id="docs-grid">
+        <div class="empty-state">No documents yet</div>
+      </div>
+    </section>
+
+    <!-- Search -->
+    <section>
+      <div class="section-header"><h2>Semantic Search</h2></div>
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Search across documents…" />
+        <button class="btn btn-primary" onclick="doSearch()">Search</button>
+      </div>
+      <div class="results" id="results"></div>
+    </section>
+
+    <!-- Ask -->
+    <section>
+      <div class="section-header"><h2>Ask a Question</h2></div>
+      <div class="search-bar">
+        <input type="text" id="ask-input" placeholder="Ask anything about your documents…" />
+        <button class="btn btn-primary" id="ask-btn" onclick="doAsk()">Ask</button>
+      </div>
+      <div id="answer-area" style="display:none">
+        <div class="answer-box" id="answer-box"></div>
+        <div class="sources-list" id="sources-list"></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast-container" id="toasts"></div>
+
+  <script>
+    const pollingMap = new Map(); // doc_id → interval id
+
+    function toast(msg) {
+      const el = document.createElement('div');
+      el.className = 'toast';
+      el.textContent = msg;
+      document.getElementById('toasts').appendChild(el);
+      setTimeout(() => el.remove(), 3500);
+    }
+
+    function statusBadge(status) {
+      const icons = { pending: '○', processing: '', ready: '✓', error: '✕' };
+      const spinner = status === 'processing' ? `<span class="spinner"></span>` : icons[status] || '?';
+      return `<span class="badge badge-${status}">${spinner} ${status}</span>`;
+    }
+
+    function renderDoc(doc) {
+      const date = new Date(doc.created_at).toLocaleDateString();
+      return `
+        <div class="doc-card" id="card-${doc.id}">
+          <div class="doc-name" title="${doc.filename}">${doc.filename}</div>
+          ${statusBadge(doc.status)}
+          <div class="doc-meta">${doc.chunk_count} chunks · ${doc.file_type.toUpperCase()} · ${date}</div>
+          ${doc.error_message ? `<div class="doc-meta" style="color:var(--error)">${doc.error_message}</div>` : ''}
+          <button class="doc-delete" onclick="deleteDoc('${doc.id}')" title="Delete">✕</button>
+        </div>`;
+    }
+
+    async function loadDocs() {
+      const res = await fetch('/api/v1/documents');
+      const data = await res.json();
+      const grid = document.getElementById('docs-grid');
+      if (!data.documents.length) {
+        grid.innerHTML = '<div class="empty-state">No documents yet</div>';
+        return;
+      }
+      grid.innerHTML = data.documents.map(renderDoc).join('');
+      // Poll processing docs
+      data.documents.forEach(doc => {
+        if (doc.status === 'processing' || doc.status === 'pending') {
+          startPolling(doc.id);
+        }
+      });
+    }
+
+    function startPolling(docId) {
+      if (pollingMap.has(docId)) return;
+      const id = setInterval(async () => {
+        const res = await fetch(`/api/v1/documents/${docId}`);
+        const doc = await res.json();
+        const card = document.getElementById(`card-${docId}`);
+        if (card) card.outerHTML = renderDoc(doc);
+        if (doc.status !== 'processing' && doc.status !== 'pending') {
+          clearInterval(pollingMap.get(docId));
+          pollingMap.delete(docId);
+        }
+      }, 2000);
+      pollingMap.set(docId, id);
+    }
+
+    async function uploadFiles(files) {
+      const form = new FormData();
+      for (const f of files) form.append('files', f);
+      toast(`Uploading ${files.length} file(s)…`);
+      const res = await fetch('/api/v1/documents/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      toast(data.message);
+      await loadDocs();
+      data.uploaded.forEach(id => startPolling(id));
+    }
+
+    async function deleteDoc(docId) {
+      if (!confirm('Delete this document and all its indexed data?')) return;
+      await fetch(`/api/v1/documents/${docId}`, { method: 'DELETE' });
+      toast('Document deleted');
+      await loadDocs();
+    }
+
+    async function doSearch() {
+      const query = document.getElementById('search-input').value.trim();
+      if (!query) return;
+      const res = await fetch('/api/v1/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, limit: 10 }),
+      });
+      const data = await res.json();
+      const container = document.getElementById('results');
+      if (!data.results.length) {
+        container.innerHTML = '<div class="empty-state">No results found</div>';
+        return;
+      }
+      container.innerHTML = data.results.map(r => `
+        <div class="result-card">
+          <div class="result-header">
+            <span class="result-meta">📄 ${r.filename}${r.page ? ` · p${r.page}` : ''} · ${r.result_type}</span>
+            <span class="result-score">${(r.score * 100).toFixed(1)}%</span>
+          </div>
+          <p class="result-snippet">${r.content}</p>
+        </div>`).join('');
+    }
+
+    // Drag & drop
+    const zone = document.getElementById('drop-zone');
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      if (e.dataTransfer.files.length) uploadFiles([...e.dataTransfer.files]);
+    });
+
+    document.getElementById('file-input').addEventListener('change', e => {
+      if (e.target.files.length) uploadFiles([...e.target.files]);
+      e.target.value = '';
+    });
+
+    document.getElementById('search-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doSearch();
+    });
+
+    document.getElementById('ask-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doAsk();
+    });
+
+    async function doAsk() {
+      const question = document.getElementById('ask-input').value.trim();
+      if (!question) return;
+
+      const btn = document.getElementById('ask-btn');
+      btn.disabled = true;
+      btn.textContent = 'Thinking…';
+
+      const answerBox = document.getElementById('answer-box');
+      const sourcesList = document.getElementById('sources-list');
+      const answerArea = document.getElementById('answer-area');
+
+      answerBox.innerHTML = '';
+      sourcesList.innerHTML = '';
+      answerArea.style.display = 'block';
+
+      try {
+        const res = await fetch('/api/v1/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question, limit: 5 }),
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let inThink = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep incomplete last line
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = JSON.parse(line.slice(6));
+
+            if (payload.type === 'sources') {
+              sourcesList.innerHTML = payload.data.map(s => `
+                <div class="source-card">
+                  <div class="source-meta">📄 ${s.filename}${s.page ? ` · p${s.page}` : ''} · ${(s.score * 100).toFixed(1)}%</div>
+                  <div class="source-snippet">${s.snippet}</div>
+                </div>`).join('');
+            } else if (payload.type === 'token') {
+              const token = payload.data;
+              // Handle <think>…</think> blocks from DeepSeek-R1
+              if (token.includes('<think>')) inThink = true;
+              if (inThink) {
+                const span = document.createElement('span');
+                span.className = 'think';
+                span.textContent = token;
+                answerBox.appendChild(span);
+              } else {
+                answerBox.appendChild(document.createTextNode(token));
+              }
+              if (token.includes('</think>')) inThink = false;
+            }
+          }
+        }
+      } catch (err) {
+        answerBox.textContent = 'Error: ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Ask';
+      }
+    }
+
+    loadDocs();
+  </script>
+</body>
+</html>
