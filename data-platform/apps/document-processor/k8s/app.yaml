@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-data
+  namespace: document-processor
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hf-cache
+  namespace: document-processor
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: document-processor
+data:
+  CHROMA_HOST: "chromadb"
+  CHROMA_PORT: "8000"
+  CHROMA_COLLECTION: "documents"
+  SQLITE_PATH: "/app/data/documents.db"
+  LOG_LEVEL: "INFO"
+  OLLAMA_URL: "http://ollama:11434"
+  LLM_MODEL: "qwen2.5:0.5b"
+  RAG_CONTEXT_CHUNKS: "5"
+  HF_HOME: "/app/hf_cache"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ghcr-pull-secret
+  namespace: document-processor
+type: kubernetes.io/dockerconfigjson
+data:
+  # Base64 encoded docker config — populated by: scripts/create-ghcr-secret.sh
+  # See deploy.md for instructions
+  .dockerconfigjson: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: document-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: document-processor
+  template:
+    metadata:
+      labels:
+        app: document-processor
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      initContainers:
+        - name: wait-for-chromadb
+          image: busybox:1.36
+          command: ["sh", "-c", "until wget -q -O- http://chromadb:8000/api/v2/heartbeat; do echo waiting for chromadb; sleep 3; done"]
+        - name: wait-for-ollama
+          image: busybox:1.36
+          command: ["sh", "-c", "until wget -q -O- http://ollama:11434/api/tags; do echo waiting for ollama; sleep 3; done"]
+      containers:
+        - name: app
+          image: ghcr.io/akshay007724/data-platform/document-processor:latest # {"$imagepolicy": "flux-system:document-processor"}
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: app-config
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          volumeMounts:
+            - name: app-data
+              mountPath: /app/data
+            - name: hf-cache
+              mountPath: /app/hf_cache
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+      volumes:
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: app-data
+        - name: hf-cache
+          persistentVolumeClaim:
+            claimName: hf-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  namespace: document-processor
+spec:
+  type: LoadBalancer
+  selector:
+    app: document-processor
+  ports:
+    - port: 8000
+      targetPort: 8000

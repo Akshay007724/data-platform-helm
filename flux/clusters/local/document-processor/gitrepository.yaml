@@ -1,0 +1,12 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: data-platform
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/akshay007724/data-platform-helm
+  ref:
+    branch: master
+  secretRef:
+    name: flux-git-auth   # created during bootstrap (flux bootstrap github)
