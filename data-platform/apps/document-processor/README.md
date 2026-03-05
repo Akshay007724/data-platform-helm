@@ -8,7 +8,7 @@ A self-hosted document intelligence service. Upload PDFs, Word documents, and Ex
 
 - **Multi-format ingestion** — PDF, DOCX/DOC, XLSX/XLS
 - **Hybrid search** — BM25 keyword retrieval fused with HNSW vector search via Reciprocal Rank Fusion (RRF), reranked by a cross-encoder
-- **RAG Q&A** — Ask natural-language questions; answers are streamed token-by-token from DeepSeek-R1 running locally via Ollama
+- **RAG Q&A** — Ask natural-language questions; answers are streamed token-by-token from Qwen2.5 running locally via Ollama
 - **Image understanding** — Embedded images are indexed using CLIP and returned in search results
 - **Fully local** — No external API calls; all models run on your machine
 
@@ -35,14 +35,14 @@ A self-hosted document intelligence service. Upload PDFs, Word documents, and Ex
 │  │ Embed      │                                                 │
 │  │ Index      │  ┌─────────────┐  ┌────────────────────────┐   │
 │  └────────────┘  │  LLMService │  │      Reranker          │   │
-│                  │  DeepSeek   │  │  ms-marco-MiniLM       │   │
+│                  │  Qwen2.5    │  │  ms-marco-MiniLM       │   │
 │                  │  via Ollama │  └────────────────────────┘   │
 │                  └─────────────┘                                │
 └──────┬──────────────────────┬──────────────────────────────────┘
        │                      │
 ┌──────▼──────┐   ┌───────────▼──────────┐   ┌──────────────────┐
 │   SQLite    │   │       ChromaDB       │   │     Ollama       │
-│  documents  │   │    HNSW vectors      │   │  deepseek-r1:1.5b│
+│  documents  │   │    HNSW vectors      │   │  qwen2.5:0.5b    │
 │  chunks     │   │  cosine similarity   │   │  (:11434)        │
 │  (:file)    │   │     (:8001)          │   └──────────────────┘
 └─────────────┘   └──────────────────────┘
@@ -56,7 +56,7 @@ A self-hosted document intelligence service. Upload PDFs, Word documents, and Ex
 | **Embedder** | `nomic-ai/nomic-embed-text-v1.5` + `clip-ViT-B-32` | Dense embeddings for text and images |
 | **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Re-scores top candidates for final ranking accuracy |
 | **HybridSearch** | `rank-bm25` (BM25Okapi) + RRF | Fuses sparse keyword and dense vector results |
-| **LLMService** | DeepSeek-R1 1.5B via Ollama | Streams RAG answers over SSE |
+| **LLMService** | Qwen2.5 0.5B via Ollama | Streams RAG answers over SSE |
 | **ChromaDB** | HNSW vector index | Persists and queries dense embeddings |
 | **SQLite** | Two tables: `documents`, `chunks` | Tracks document metadata and raw chunk text for BM25 |
 | **Ollama** | Container sidecar | Serves the local LLM; downloads model on first boot |
@@ -91,7 +91,7 @@ Question
    cross-encoder rerank ──► top-5 context passages
          │
          ▼
-   DeepSeek-R1 (Ollama) ──► SSE token stream
+   Qwen2.5 0.5B (Ollama) ──► SSE token stream
 
 SSE events:
   {"type":"sources","data":[{doc_id, filename, page, score, snippet}]}
@@ -106,8 +106,8 @@ SSE events:
 ### Prerequisites
 
 - Docker and Docker Compose
-- ~5 GB disk space (models + data)
-- 8 GB RAM recommended (4 GB minimum with swap)
+- ~2 GB disk space (models + data)
+- 4 GB RAM recommended (2 GB minimum)
 
 ### Quick start
 
@@ -122,7 +122,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-On first boot the app container downloads ~650 MB of HuggingFace models at build time. Ollama pulls `deepseek-r1:1.5b` (~1.1 GB) on first startup — this is cached in the `ollama_data` volume and skipped on subsequent restarts.
+On first boot the app container downloads ~650 MB of HuggingFace models at build time. Ollama pulls `qwen2.5:0.5b` (~400 MB) on first startup — this is cached in the `ollama_data` volume and skipped on subsequent restarts.
 
 Open `http://localhost:8000` once you see `All services ready` in the logs.
 
@@ -280,7 +280,7 @@ apps/document-processor/
 ├── services/
 │   ├── chunk_store.py     # SQLite chunks table (BM25 corpus)
 │   ├── hybrid_search.py   # BM25 + RRF fusion
-│   ├── llm.py             # Ollama / DeepSeek streaming
+│   ├── llm.py             # Ollama / Qwen2.5 streaming
 │   ├── embedder.py        # Text + image embeddings
 │   ├── reranker.py        # Cross-encoder reranker
 │   ├── vector_store.py    # ChromaDB wrapper
