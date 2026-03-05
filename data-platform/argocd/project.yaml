@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: data-platform
+  namespace: argocd
+  # Prevent accidental deletion while apps are running
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Data engineering platform — Kafka, Flink, Airflow, custom microservices
+
+  # Only this repo is a valid source
+  sourceRepos:
+    - https://github.com/your-org/data-platform.git
+
+  # Allowed destination clusters and namespaces
+  destinations:
+    - server: https://kubernetes.default.svc   # in-cluster
+      namespace: data-platform
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+
+  # Cluster-scoped resources the project may manage
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+
+  # Namespace-scoped resources (everything standard + Flink CRD)
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  # Roles within this project
+  roles:
+    - name: ci-deployer
+      description: Used by GitHub Actions to sync the application
+      policies:
+        - p, proj:data-platform:ci-deployer, applications, sync, data-platform/*, allow
+        - p, proj:data-platform:ci-deployer, applications, get,  data-platform/*, allow
