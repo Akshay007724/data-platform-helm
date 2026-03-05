@@ -116,7 +116,6 @@ jobs:
           services:
             app:
               image: ${IMAGE}
-              build: null
           EOF
         shell: bash
 
