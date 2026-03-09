@@ -26,5 +26,10 @@ class Settings(BaseSettings):
     llm_model: str = "qwen2.5:0.5b"
     rag_context_chunks: int = 5
 
+    # OCR routing: PDFs whose average extracted text falls below this
+    # character threshold per page are treated as scanned and re-processed
+    # with GLM-OCR.  Image uploads always use GLM-OCR directly.
+    ocr_scanned_threshold: int = 100
+
 
 settings = Settings()

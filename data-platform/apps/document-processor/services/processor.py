@@ -10,19 +10,24 @@ from services.document_store import DocumentStore
 from services.embedder import Embedder
 from services.extractors.base import ExtractedContent, PageContent
 from services.extractors.excel_extractor import ExcelExtractor
+from services.extractors.glm_ocr_extractor import GlmOcrExtractor
 from services.extractors.pdf_extractor import PdfExtractor
 from services.extractors.word_extractor import WordExtractor
 from services.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
-EXTRACTORS = {
-    "pdf": PdfExtractor(),
+_PDF_EXTRACTOR = PdfExtractor()
+_OFFICE_EXTRACTORS = {
     "xlsx": ExcelExtractor(),
     "xls": ExcelExtractor(),
     "docx": WordExtractor(),
     "doc": WordExtractor(),
 }
+_IMAGE_TYPES = {"jpg", "jpeg", "png", "tiff", "tif", "bmp", "webp"}
+
+# Shared lazy-loaded GLM-OCR instance (model downloaded on first use)
+_glm_ocr = GlmOcrExtractor()
 
 
 def _detect_file_type(filename: str) -> str:
@@ -47,8 +52,8 @@ class DocumentProcessor:
 
     async def process(self, doc_id: str, filename: str, file_bytes: bytes) -> None:
         file_type = _detect_file_type(filename)
-        extractor = EXTRACTORS.get(file_type)
-        if extractor is None:
+        supported = {"pdf"} | set(_OFFICE_EXTRACTORS) | _IMAGE_TYPES
+        if file_type not in supported:
             await self._doc_store.update_status(
                 doc_id, "error", error_message=f"Unsupported file type: {file_type}"
             )
@@ -59,9 +64,38 @@ class DocumentProcessor:
             loop = asyncio.get_running_loop()
 
             # ── 1. Extract ────────────────────────────────────────────────
-            extracted: ExtractedContent = await loop.run_in_executor(
-                self._executor, partial(extractor.extract, file_bytes)
-            )
+            # Routing:
+            #   • Office files  → dedicated extractor (fast, lossless)
+            #   • Image files   → GLM-OCR directly
+            #   • PDF (digital) → PdfExtractor; if avg chars/page < threshold
+            #                     it's a scanned PDF → re-extract with GLM-OCR
+            if file_type in _OFFICE_EXTRACTORS:
+                extracted: ExtractedContent = await loop.run_in_executor(
+                    self._executor, partial(_OFFICE_EXTRACTORS[file_type].extract, file_bytes)
+                )
+            elif file_type in _IMAGE_TYPES:
+                logger.info("Image upload (%s) — routing to GLM-OCR", file_type)
+                extracted = await loop.run_in_executor(
+                    self._executor, partial(_glm_ocr.extract_image, file_bytes)
+                )
+            else:  # pdf
+                digital = await loop.run_in_executor(
+                    self._executor, partial(_PDF_EXTRACTOR.extract, file_bytes)
+                )
+                total_chars = sum(len(p.text) for p in digital.pages)
+                avg_chars = total_chars / max(len(digital.pages), 1)
+                if avg_chars >= settings.ocr_scanned_threshold:
+                    logger.info("Digital PDF (avg %.0f chars/page) — using text layer", avg_chars)
+                    extracted = digital
+                else:
+                    logger.info(
+                        "Scanned PDF detected (avg %.0f chars/page < threshold %d) "
+                        "— re-extracting with GLM-OCR",
+                        avg_chars, settings.ocr_scanned_threshold,
+                    )
+                    extracted = await loop.run_in_executor(
+                        self._executor, partial(_glm_ocr.extract, file_bytes)
+                    )
 
             # ── 2. Chunk all pages + tables in parallel ───────────────────
             async def chunk_page(page: PageContent) -> tuple[PageContent, list[str], list[str]]:

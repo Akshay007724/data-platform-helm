@@ -1,12 +1,13 @@
 # Document Processor
 
-A self-hosted document intelligence service. Upload PDFs, Word documents, and Excel spreadsheets — the service extracts, chunks, and indexes their content so you can search semantically and ask questions answered by an on-device LLM.
+A self-hosted document intelligence service. Upload PDFs, Word documents, Excel spreadsheets, and images — the service extracts, chunks, and indexes their content so you can search semantically and ask questions answered by an on-device LLM.
 
 ---
 
 ## Features
 
-- **Multi-format ingestion** — PDF, DOCX/DOC, XLSX/XLS
+- **Multi-format ingestion** — PDF, DOCX/DOC, XLSX/XLS, JPG, PNG, TIFF, BMP, WebP
+- **Smart OCR routing** — Digital PDFs use the fast text-layer extractor; scanned PDFs and images are automatically routed to GLM-OCR (0.9B)
 - **Hybrid search** — BM25 keyword retrieval fused with HNSW vector search via Reciprocal Rank Fusion (RRF), reranked by a cross-encoder
 - **RAG Q&A** — Ask natural-language questions; answers are streamed token-by-token from Qwen2.5 running locally via Ollama
 - **Image understanding** — Embedded images are indexed using CLIP and returned in search results
@@ -27,17 +28,19 @@ A self-hosted document intelligence service. Upload PDFs, Word documents, and Ex
 │                                                                 │
 │  POST /upload   GET /documents   POST /search   POST /ask       │
 │                                                                 │
-│  ┌────────────┐  ┌─────────────┐  ┌────────────────────────┐   │
-│  │ Processor  │  │  Embedder   │  │     HybridSearch       │   │
-│  │            │  │ nomic-embed │  │  BM25Okapi + RRF       │   │
-│  │ Extract    │  │ clip-ViT    │  │  + cross-encoder       │   │
-│  │ Chunk      │  └─────────────┘  └────────────────────────┘   │
-│  │ Embed      │                                                 │
-│  │ Index      │  ┌─────────────┐  ┌────────────────────────┐   │
-│  └────────────┘  │  LLMService │  │      Reranker          │   │
-│                  │  Qwen2.5    │  │  ms-marco-MiniLM       │   │
-│                  │  via Ollama │  └────────────────────────┘   │
-│                  └─────────────┘                                │
+│  ┌──────────────────────┐  ┌─────────────┐  ┌───────────────┐  │
+│  │      Processor       │  │  Embedder   │  │ HybridSearch  │  │
+│  │                      │  │ nomic-embed │  │ BM25 + RRF    │  │
+│  │  ┌────────────────┐  │  │ clip-ViT    │  │ cross-encoder │  │
+│  │  │ Smart routing  │  │  └─────────────┘  └───────────────┘  │
+│  │  │ Digital PDF    │  │                                       │
+│  │  │  → PyMuPDF     │  │  ┌─────────────┐  ┌───────────────┐  │
+│  │  │ Scanned PDF    │  │  │  LLMService │  │   Reranker    │  │
+│  │  │  → GLM-OCR     │  │  │  Qwen2.5   │  │  ms-marco     │  │
+│  │  │ Images         │  │  │  via Ollama │  │  MiniLM       │  │
+│  │  │  → GLM-OCR     │  │  └─────────────┘  └───────────────┘  │
+│  │  └────────────────┘  │                                       │
+│  └──────────────────────┘                                       │
 └──────┬──────────────────────┬──────────────────────────────────┘
        │                      │
 ┌──────▼──────┐   ┌───────────▼──────────┐   ┌──────────────────┐
@@ -53,13 +56,30 @@ A self-hosted document intelligence service. Upload PDFs, Word documents, and Ex
 | Component | Technology | Role |
 |---|---|---|
 | **API** | FastAPI + Uvicorn | Async HTTP server; background task processing |
-| **Embedder** | `nomic-ai/nomic-embed-text-v1.5` + `clip-ViT-B-32` | Dense embeddings for text and images |
+| **Extractor (digital)** | PyMuPDF | Fast text-layer + table extraction for digital PDFs |
+| **Extractor (OCR)** | `zai-org/GLM-OCR` (0.9B) | Reads scanned PDFs and image uploads; loaded lazily on first use |
+| **Embedder** | `nomic-ai/nomic-embed-text-v1.5` (768-dim) + `clip-ViT-B-32` | Dense embeddings for text and images |
 | **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Re-scores top candidates for final ranking accuracy |
 | **HybridSearch** | `rank-bm25` (BM25Okapi) + RRF | Fuses sparse keyword and dense vector results |
 | **LLMService** | Qwen2.5 0.5B via Ollama | Streams RAG answers over SSE |
-| **ChromaDB** | HNSW vector index | Persists and queries dense embeddings |
+| **ChromaDB** | HNSW vector index | Persists and queries dense embeddings (768-dim cosine space) |
 | **SQLite** | Two tables: `documents`, `chunks` | Tracks document metadata and raw chunk text for BM25 |
 | **Ollama** | Container sidecar | Serves the local LLM; downloads model on first boot |
+
+---
+
+## OCR Routing
+
+When a document is uploaded, the processor automatically chooses the best extractor:
+
+| Input | Condition | Extractor |
+|---|---|---|
+| PDF | Average extracted chars/page ≥ 100 | PyMuPDF (text layer) — fast |
+| PDF | Average extracted chars/page < 100 | GLM-OCR — scanned document |
+| JPG / PNG / TIFF / BMP / WebP | — | GLM-OCR |
+| DOCX / XLSX | — | Dedicated office extractor |
+
+GLM-OCR is loaded lazily — the 0.9B model is only downloaded and loaded into memory the first time a scanned PDF or image is uploaded.
 
 ---
 
@@ -103,49 +123,76 @@ SSE events:
 
 ## Deployment
 
-### Prerequisites
+### Option A — Docker Compose (local / single-machine)
 
-- Docker and Docker Compose
-- ~2 GB disk space (models + data)
-- 4 GB RAM recommended (2 GB minimum)
-
-### Quick start
+**Prerequisites:** Docker Desktop with at least 4 GB RAM allocated.
 
 ```bash
-# 1. Clone and enter the service directory
+# 1. Enter the service directory
 cd apps/document-processor
 
-# 2. Copy and review environment config
-cp .env.example .env
-
-# 3. Build and start all services
+# 2. Build and start all services
 docker compose up --build
 ```
 
-On first boot the app container downloads ~650 MB of HuggingFace models at build time. Ollama pulls `qwen2.5:0.5b` (~400 MB) on first startup — this is cached in the `ollama_data` volume and skipped on subsequent restarts.
+**What happens on first boot:**
+- App container downloads ~650 MB of HuggingFace models (nomic-embed, CLIP, cross-encoder) into the `hf_cache` volume — skipped on subsequent restarts.
+- Ollama pulls `qwen2.5:0.5b` (~400 MB) into the `ollama_data` volume — skipped on subsequent restarts.
+- GLM-OCR (~900 MB) is downloaded the first time a scanned PDF or image is uploaded.
 
 Open `http://localhost:8000` once you see `All services ready` in the logs.
 
-### Services and ports
+#### Services and ports
 
 | Service | Host port | Purpose |
 |---|---|---|
 | `app` | `8000` | FastAPI application + UI |
-| `chromadb` | `8001` | ChromaDB HTTP API (internal use) |
+| `chromadb` | `8001` | ChromaDB HTTP API (internal use only) |
 | `ollama` | `11434` | Ollama LLM runtime |
 
-### Environment variables
+#### Stopping and resetting
+
+```bash
+# Stop services (data preserved in volumes)
+docker compose down
+
+# Stop and delete all data volumes (full reset)
+docker compose down -v
+```
+
+---
+
+### Option B — GHCR + Flux GitOps (Kubernetes)
+
+For a production deployment on Kubernetes with automated image updates, see **[deploy.md](../../deploy.md)** at the repository root.
+
+The flow is:
+```
+git push to master
+      ↓
+GitHub Actions — lint → test → build → push to GHCR
+      ↓
+Flux detects new sha-* tag via ImageRepository
+      ↓
+ImageUpdateAutomation commits new tag to master
+      ↓
+Kustomization applies updated manifests → Kubernetes rolling update
+```
+
+---
+
+## Environment Variables
 
 All variables have defaults; only override what you need.
 
 | Variable | Default | Description |
 |---|---|---|
 | `LOG_LEVEL` | `INFO` | Uvicorn log level |
-| `CHROMA_HOST` | `chromadb` | ChromaDB hostname |
-| `CHROMA_PORT` | `8000` | ChromaDB port |
+| `CHROMA_HOST` | `chromadb` | ChromaDB hostname (use `localhost` for local dev) |
+| `CHROMA_PORT` | `8000` | ChromaDB port inside Docker network (`8001` for local dev) |
 | `CHROMA_COLLECTION` | `documents` | Collection name |
 | `SQLITE_PATH` | `/app/data/documents.db` | SQLite database path |
-| `TEXT_MODEL` | `nomic-ai/nomic-embed-text-v1.5` | Text embedding model |
+| `TEXT_MODEL` | `nomic-ai/nomic-embed-text-v1.5` | Text embedding model (768-dim) |
 | `IMAGE_MODEL` | `clip-ViT-B-32` | Image embedding model |
 | `RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder reranker |
 | `CHUNK_SIZE` | `512` | Max tokens per chunk |
@@ -154,25 +201,18 @@ All variables have defaults; only override what you need.
 | `OLLAMA_URL` | `http://ollama:11434` | Ollama base URL |
 | `LLM_MODEL` | `qwen2.5:0.5b` | Model to pull and serve |
 | `RAG_CONTEXT_CHUNKS` | `5` | Top-k chunks passed to the LLM |
+| `OCR_SCANNED_THRESHOLD` | `100` | Avg chars/page below which a PDF is treated as scanned |
 
-### Volumes
+---
+
+## Volumes
 
 | Volume | Mounted at | Contains |
 |---|---|---|
 | `app_data` | `/app/data` | SQLite database (`documents.db`) |
-| `hf_cache` | `/app/hf_cache` | HuggingFace model weights |
+| `hf_cache` | `/app/hf_cache` | HuggingFace model weights (nomic-embed, CLIP, cross-encoder, GLM-OCR) |
 | `chroma_data` | `/chroma/chroma` | ChromaDB vector index |
 | `ollama_data` | `/root/.ollama` | Pulled Ollama models |
-
-### Stopping and resetting
-
-```bash
-# Stop services (data preserved)
-docker compose down
-
-# Stop and delete all data volumes (full reset)
-docker compose down -v
-```
 
 ---
 
@@ -186,6 +226,8 @@ docker compose down -v
 | `GET` | `/api/v1/documents` | List all documents |
 | `GET` | `/api/v1/documents/{doc_id}` | Get document status and metadata |
 | `DELETE` | `/api/v1/documents/{doc_id}` | Delete document and all indexed data |
+
+Supported upload formats: `pdf`, `docx`, `doc`, `xlsx`, `xls`, `jpg`, `jpeg`, `png`, `tiff`, `tif`, `bmp`, `webp`
 
 ### Search
 
@@ -241,6 +283,7 @@ docker compose up chromadb ollama -d
 pip install -r requirements.txt
 
 # Point the app at local services
+# Note: ChromaDB is mapped to host port 8001 by docker-compose
 export CHROMA_HOST=localhost
 export CHROMA_PORT=8001
 export OLLAMA_URL=http://localhost:11434
@@ -264,7 +307,7 @@ ruff check .
 
 ---
 
-## Project structure
+## Project Structure
 
 ```
 apps/document-processor/
@@ -285,12 +328,14 @@ apps/document-processor/
 │   ├── reranker.py        # Cross-encoder reranker
 │   ├── vector_store.py    # ChromaDB wrapper
 │   ├── document_store.py  # SQLite documents table
-│   ├── processor.py       # End-to-end doc processing pipeline
+│   ├── processor.py       # End-to-end doc processing pipeline (smart OCR routing)
 │   ├── chunker.py         # Text + table chunking
-│   └── extractors/        # PDF, Word, Excel extraction
-│       ├── pdf_extractor.py
-│       ├── word_extractor.py
-│       └── excel_extractor.py
+│   └── extractors/
+│       ├── base.py              # BaseExtractor, PageContent, ExtractedContent
+│       ├── pdf_extractor.py     # PyMuPDF — digital PDFs
+│       ├── glm_ocr_extractor.py # GLM-OCR — scanned PDFs and images
+│       ├── word_extractor.py    # DOCX/DOC
+│       └── excel_extractor.py  # XLSX/XLS
 ├── ui/
 │   └── index.html         # Single-page UI
 ├── tests/
