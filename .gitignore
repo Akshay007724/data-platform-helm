@@ -7,3 +7,18 @@ data-platform/charts/*.tgz
 # Claude Code session files (exclude agent definitions which should be shared)
 .claude/
 !.claude/agents/
+
+# Environment files — never commit secrets
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Uploads (runtime data)
+apps/*/uploads/
