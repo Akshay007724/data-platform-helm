@@ -8,7 +8,7 @@ from models.schemas import DocumentListResponse, DocumentResponse, UploadRespons
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
-ALLOWED_TYPES = {"pdf", "xlsx", "xls", "docx", "doc"}
+ALLOWED_TYPES = {"pdf", "xlsx", "xls", "docx", "doc", "jpg", "jpeg", "png", "tiff", "tif", "bmp", "webp"}
 
 
 def _get_services(request: Request):
@@ -71,10 +71,12 @@ async def delete_document(doc_id: str, request: Request) -> None:
         raise HTTPException(status_code=404, detail="Document not found")
 
     chunk_store = request.app.state.chunk_store
+    image_store = request.app.state.image_store
     hybrid_search = request.app.state.hybrid_search
     await asyncio.gather(
         doc_store.delete(doc_id),
         vec_store.delete_by_doc_id(doc_id),
         chunk_store.delete_by_doc_id(doc_id),
+        image_store.delete_by_doc_id(doc_id),
     )
     hybrid_search.mark_dirty()

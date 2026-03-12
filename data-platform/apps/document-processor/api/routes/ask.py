@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from fastapi.requests import Request
 from fastapi.responses import StreamingResponse
 
+from api.config import settings
 from models.schemas import AskRequest, SourceReference
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ async def ask(body: AskRequest, request: Request) -> StreamingResponse:
     hybrid_search = request.app.state.hybrid_search
     reranker = request.app.state.reranker
     llm_service = request.app.state.llm_service
+    image_store = request.app.state.image_store
 
     query_vector = embedder.embed_query(body.question)
     raw_hits = await hybrid_search.search(
@@ -48,10 +50,27 @@ async def ask(body: AskRequest, request: Request) -> StreamingResponse:
             )
         )
 
+    # Fetch image bytes for any image hits so the vision model can see them
+    image_hit_ids = [
+        r["id"] for r in reranked
+        if r.get("payload", {}).get("type") == "image" and r.get("id")
+    ]
+    image_bytes_map: dict[str, bytes] = {}
+    if image_hit_ids and settings.vision_model:
+        image_bytes_map = await image_store.get_by_ids(image_hit_ids)
+
+    use_vision = bool(image_bytes_map) and bool(settings.vision_model)
+    if use_vision:
+        logger.info("Vision model activated — %d image(s) in context", len(image_bytes_map))
+
     async def event_stream():
         yield f"data: {json.dumps({'type': 'sources', 'data': [s.model_dump() for s in sources]})}\n\n"
         try:
-            async for token in llm_service.stream_answer(body.question, reranked):
+            if use_vision:
+                gen = llm_service.stream_vision_answer(body.question, reranked, image_bytes_map)
+            else:
+                gen = llm_service.stream_answer(body.question, reranked)
+            async for token in gen:
                 yield f"data: {json.dumps({'type': 'token', 'data': token})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as exc:

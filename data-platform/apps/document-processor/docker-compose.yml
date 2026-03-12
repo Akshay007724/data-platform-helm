@@ -30,6 +30,7 @@ services:
       LOG_LEVEL: INFO
       OLLAMA_URL: http://ollama:11434
       LLM_MODEL: qwen2.5:0.5b
+      VISION_MODEL: moondream   # swap to qwen2-vl:2b for richer image understanding (~1.7 GB)
       RAG_CONTEXT_CHUNKS: 5
     volumes:
       - app_data:/app/data

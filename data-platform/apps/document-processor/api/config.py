@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     ollama_url: str = "http://ollama:11434"
     llm_model: str = "qwen2.5:0.5b"
+    vision_model: str = "moondream"  # swap to qwen2-vl:2b for higher quality (~1.7 GB)
     rag_context_chunks: int = 5
 
     # OCR routing: PDFs whose average extracted text falls below this

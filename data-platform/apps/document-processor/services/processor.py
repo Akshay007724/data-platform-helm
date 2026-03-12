@@ -42,12 +42,14 @@ class DocumentProcessor:
         embedder: Embedder,
         chunk_store=None,
         hybrid_search=None,
+        image_store=None,
     ) -> None:
         self._doc_store = document_store
         self._vec_store = vector_store
         self._embedder = embedder
         self._chunk_store = chunk_store
         self._hybrid_search = hybrid_search
+        self._image_store = image_store
         self._executor = ThreadPoolExecutor(max_workers=settings.max_workers)
 
     async def process(self, doc_id: str, filename: str, file_bytes: bytes) -> None:
@@ -161,20 +163,23 @@ class DocumentProcessor:
 
             # ── 6. Embed images in parallel, ONE batch upsert ─────────────
             if image_items:
-                img_vectors = await asyncio.gather(*[
-                    loop.run_in_executor(
-                        self._executor, partial(self._embedder.embed_image, img_bytes)
-                    )
-                    for _, img_bytes, _ in image_items
-                ])
+                image_chunk_ids = [str(uuid.uuid4()) for _ in image_items]
                 await self._vec_store.upsert_batch([
                     {
+                        "id": chunk_id,
                         "vector": cap_vec,
                         "document": caption,
                         "metadata": {"type": "image", "doc_id": doc_id, "page": page},
                     }
-                    for (page, _, caption), cap_vec in zip(image_items, caption_vectors)
+                    for chunk_id, (page, _, caption), cap_vec in zip(
+                        image_chunk_ids, image_items, caption_vectors
+                    )
                 ])
+                if self._image_store is not None:
+                    await self._image_store.add_images([
+                        {"id": chunk_id, "doc_id": doc_id, "page": page, "data": img_bytes}
+                        for chunk_id, (page, img_bytes, _) in zip(image_chunk_ids, image_items)
+                    ])
 
             if self._hybrid_search is not None:
                 self._hybrid_search.mark_dirty()

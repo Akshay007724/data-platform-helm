@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 from collections.abc import AsyncGenerator
 
@@ -23,8 +24,22 @@ class LLMService:
         )
         self._model = settings.llm_model
 
+    async def _pull_model(self, model: str) -> None:
+        """Pull a single model from Ollama (no-op if already cached)."""
+        async with httpx.AsyncClient() as client:
+            async with client.stream(
+                "POST",
+                f"{settings.ollama_url}/api/pull",
+                json={"name": model},
+                timeout=600.0,
+            ) as resp:
+                async for line in resp.aiter_lines():
+                    if line:
+                        logger.debug("pull %s: %s", model, line)
+        logger.info("Model %s ready", model)
+
     async def ensure_model(self) -> None:
-        """Block until Ollama is reachable, then pull the model if not already present."""
+        """Block until Ollama is reachable, then pull text and vision models."""
         base_url = settings.ollama_url
         async with httpx.AsyncClient() as client:
             while True:
@@ -37,18 +52,10 @@ class LLMService:
                 logger.info("Waiting for Ollama at %s…", base_url)
                 await asyncio.sleep(3)
 
-        logger.info("Ollama reachable — pulling model %s (cached after first run)", self._model)
-        async with httpx.AsyncClient() as client:
-            async with client.stream(
-                "POST",
-                f"{base_url}/api/pull",
-                json={"name": self._model},
-                timeout=600.0,
-            ) as resp:
-                async for line in resp.aiter_lines():
-                    if line:
-                        logger.debug("pull: %s", line)
-        logger.info("Model %s ready", self._model)
+        logger.info("Pulling text model %s and vision model %s", self._model, settings.vision_model)
+        await self._pull_model(self._model)
+        if settings.vision_model:
+            await self._pull_model(settings.vision_model)
 
     async def stream_answer(
         self, question: str, context_hits: list[dict]
@@ -71,6 +78,55 @@ class LLMService:
         stream = await self._client.chat.completions.create(
             model=self._model,
             messages=messages,
+            stream=True,
+        )
+
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+
+    async def stream_vision_answer(
+        self,
+        question: str,
+        context_hits: list[dict],
+        image_bytes_map: dict[str, bytes],
+    ) -> AsyncGenerator[str, None]:
+        """
+        Stream an answer from the vision model.  Text context chunks are passed
+        as a numbered list; image chunks found in image_bytes_map are attached
+        as inline base64 data URLs so the model can see them.
+        """
+        text_parts: list[str] = []
+        for i, hit in enumerate(context_hits, 1):
+            payload = hit.get("payload", {})
+            if payload.get("type") == "image":
+                text_parts.append(f"[{i}] (image on page {payload.get('page')})")
+            else:
+                text_parts.append(f"[{i}] {payload.get('content') or ''}")
+
+        content: list[dict] = [
+            {"type": "text", "text": f"Context:\n" + "\n\n".join(text_parts)},
+        ]
+
+        for hit in context_hits:
+            chunk_id = hit.get("id")
+            img_bytes = image_bytes_map.get(chunk_id) if chunk_id else None
+            if img_bytes:
+                b64 = base64.b64encode(img_bytes).decode()
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                })
+
+        content.append({"type": "text", "text": f"\nQuestion: {question}"})
+
+        stream = await self._client.chat.completions.create(
+            model=settings.vision_model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": content},
+            ],
             stream=True,
         )
 

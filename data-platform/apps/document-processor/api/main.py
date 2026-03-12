@@ -14,6 +14,7 @@ from services.chunk_store import ChunkStore
 from services.document_store import DocumentStore
 from services.embedder import Embedder
 from services.hybrid_search import HybridSearch
+from services.image_store import ImageStore
 from services.llm import LLMService
 from services.processor import DocumentProcessor
 from services.reranker import Reranker
@@ -34,10 +35,12 @@ async def lifespan(app: FastAPI):
     doc_store = DocumentStore()
     vec_store = VectorStore(embedder)
     chunk_store = ChunkStore()
+    image_store = ImageStore()
     hybrid_search = HybridSearch()
     llm_service = LLMService()
 
     await chunk_store.init()
+    await image_store.init()
     await doc_store.init()
     await vec_store.ensure_collection()
 
@@ -45,7 +48,9 @@ async def lifespan(app: FastAPI):
     hybrid_search.build(chunks)
     hybrid_search.set_chunk_store(chunk_store)
 
-    processor = DocumentProcessor(doc_store, vec_store, embedder, chunk_store, hybrid_search)
+    processor = DocumentProcessor(
+        doc_store, vec_store, embedder, chunk_store, hybrid_search, image_store
+    )
 
     await llm_service.ensure_model()
 
@@ -54,6 +59,7 @@ async def lifespan(app: FastAPI):
     app.state.doc_store = doc_store
     app.state.vec_store = vec_store
     app.state.chunk_store = chunk_store
+    app.state.image_store = image_store
     app.state.hybrid_search = hybrid_search
     app.state.llm_service = llm_service
     app.state.processor = processor

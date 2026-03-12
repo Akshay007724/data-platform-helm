@@ -4,5 +4,6 @@ data-platform/charts/*.tgz
 # macOS
 .DS_Store
 
-# Claude Code session files
+# Claude Code session files (exclude agent definitions which should be shared)
 .claude/
+!.claude/agents/
