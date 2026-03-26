@@ -22,3 +22,6 @@ venv/
 
 # Uploads (runtime data)
 apps/*/uploads/
+
+# Superpowers agent runtime
+.superpowers/
