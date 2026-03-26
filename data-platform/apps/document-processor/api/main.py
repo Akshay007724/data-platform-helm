@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.config import settings
+from api.middleware import MaxBodySizeMiddleware
 from api.routes import documents, search
 from api.routes import ask
 from models.schemas import HealthResponse
@@ -76,6 +77,11 @@ app = FastAPI(
     title="Document Processor",
     version=settings.app_version,
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    MaxBodySizeMiddleware,
+    max_bytes=settings.max_upload_size_mb * 1024 * 1024,
 )
 
 app.include_router(documents.router)
