@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Document Processor — Demo</title>
+  <link rel="stylesheet" href="assets/style.css"/>
+  <style>
+    body { display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+    .demo-nav { height:52px; border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 20px; gap:14px; flex-shrink:0; background:var(--surface); }
+    .demo-nav a { color:var(--muted); text-decoration:none; font-size:0.82rem; transition:color 0.15s; }
+    .demo-nav a:hover { color:var(--cyan); }
+    .demo-nav .title { font-weight:600; font-size:0.9rem; margin-left:auto; color:var(--text); }
+    .demo-nav.hidden { display:none; }
+    .demo-body { display:flex; flex:1; overflow:hidden; }
+    /* Sidebar */
+    .sidebar { width:280px; border-right:1px solid var(--border); display:flex; flex-direction:column; background:var(--surface); flex-shrink:0; }
+    .sidebar.hidden { display:none; }
+    .upload-zone { border:2px dashed var(--border); border-radius:var(--radius); margin:16px; padding:20px 12px; text-align:center; cursor:pointer; transition:border-color 0.2s,background 0.2s; }
+    .upload-zone:hover,.upload-zone.drag-over { border-color:var(--cyan); background:rgba(56,189,248,0.04); }
+    .upload-zone .uz-icon { font-size:1.8rem; }
+    .upload-zone p { font-size:0.78rem; color:var(--muted); margin-top:6px; }
+    .doc-list { flex:1; overflow-y:auto; padding:0 12px 12px; }
+    .doc-item { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:8px; }
+    .doc-name { font-size:0.82rem; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text); }
+    .doc-meta { font-size:0.7rem; color:var(--muted); margin-top:5px; display:flex; justify-content:space-between; align-items:center; }
+    .sidebar-footer { padding:12px; border-top:1px solid var(--border); }
+    /* Main */
+    .main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+    .tab-bar { display:flex; gap:2px; padding:12px 20px 0; border-bottom:1px solid var(--border); flex-shrink:0; background:var(--bg); }
+    .ptab { padding:8px 20px; border-radius:6px 6px 0 0; font-size:0.88rem; cursor:pointer; color:var(--muted); border:1px solid transparent; border-bottom:none; margin-bottom:-1px; transition:color 0.15s; }
+    .ptab.active { color:var(--cyan); border-color:var(--border); border-bottom-color:var(--bg); background:var(--bg); }
+    .panel { display:none; flex:1; flex-direction:column; overflow-y:auto; padding:20px; gap:0; }
+    .panel.active { display:flex; }
+    /* Search */
+    .search-bar { display:flex; gap:10px; margin-bottom:16px; flex-shrink:0; }
+    .search-bar input { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 16px; color:var(--text); font-size:0.9rem; outline:none; transition:border-color 0.15s; }
+    .search-bar input:focus { border-color:var(--cyan); }
+    .search-bar input::placeholder { color:var(--muted); }
+    .result-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 18px; margin-bottom:10px; }
+    .result-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+    .result-meta { font-size:0.75rem; color:var(--muted); }
+    .score-bar-wrap { height:3px; background:var(--border); border-radius:2px; margin:6px 0; }
+    .score-bar { height:100%; background:linear-gradient(90deg,var(--cyan),var(--purple)); border-radius:2px; transition:width 0.4s ease; }
+    .result-snippet { font-size:0.84rem; color:var(--text); line-height:1.55; }
+    /* Ask */
+    .ask-bar { display:flex; gap:10px; margin-bottom:16px; flex-shrink:0; }
+    .ask-bar input { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 16px; color:var(--text); font-size:0.9rem; outline:none; transition:border-color 0.15s; }
+    .ask-bar input:focus { border-color:var(--cyan); }
+    .ask-bar input::placeholder { color:var(--muted); }
+    .answer-box { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:18px; font-size:0.9rem; line-height:1.7; min-height:80px; }
+    .cursor { display:inline-block; width:2px; height:1em; background:var(--pink); animation:blink 0.8s step-end infinite; vertical-align:text-bottom; margin-left:1px; }
+    @keyframes blink { 50%{opacity:0} }
+    .source-card { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-top:8px; font-size:0.8rem; }
+    .source-meta { color:var(--cyan); font-weight:600; margin-bottom:4px; }
+    .source-snippet { color:var(--muted); }
+    .empty { text-align:center; padding:60px 20px; color:var(--muted); font-size:0.875rem; }
+  </style>
+</head>
+<body>
+
+<nav class="demo-nav" id="demo-nav">
+  <a href="index.html">&#8592; Back to site</a>
+  <span style="color:var(--border)">|</span>
+  <span class="badge" style="font-size:0.7rem;padding:3px 10px">DEMO</span>
+  <span class="title">Document Processor</span>
+</nav>
+
+<div class="demo-body">
+  <aside class="sidebar" id="sidebar">
+    <div class="upload-zone" id="upload-zone" role="button" tabindex="0" aria-label="Upload files">
+      <div class="uz-icon">&#128196;</div>
+      <p>Drop files here or click</p>
+      <p style="font-size:0.7rem;margin-top:4px">PDF · DOCX · XLSX</p>
+    </div>
+    <div class="doc-list" id="doc-list"></div>
+    <div class="sidebar-footer">
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:0.8rem" id="refresh-btn">&#8635; Refresh</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="tab-bar">
+      <div class="ptab active" data-panel="search">&#128269; Search</div>
+      <div class="ptab" data-panel="ask">&#128172; Ask</div>
+    </div>
+    <div class="panel active" id="panel-search">
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Search across documents&#8230;" autocomplete="off"/>
+        <button class="btn btn-primary" id="search-btn">Search</button>
+      </div>
+      <div id="search-results"><div class="empty">Enter a query to search your documents</div></div>
+    </div>
+    <div class="panel" id="panel-ask">
+      <div class="ask-bar">
+        <input type="text" id="ask-input" placeholder="Ask anything about your documents&#8230;" autocomplete="off"/>
+        <button class="btn btn-primary" id="ask-btn">Ask</button>
+      </div>
+      <div id="ask-output" style="display:none">
+        <div class="answer-box" id="answer-box"></div>
+        <div id="sources-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>window.DEMO_MODE = true;</script>
+<script type="module" src="assets/demo.js"></script>
+</body>
+</html>
