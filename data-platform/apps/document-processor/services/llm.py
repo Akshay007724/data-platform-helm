@@ -39,18 +39,29 @@ class LLMService:
         logger.info("Model %s ready", model)
 
     async def ensure_model(self) -> None:
-        """Block until Ollama is reachable, then pull text and vision models."""
+        """Block until Ollama is reachable, then pull text and vision models.
+
+        Retries for up to ~90 seconds (30 attempts × 3 s) before raising.
+        This gives Ollama time to start while preventing an infinite hang if
+        the URL is misconfigured.
+        """
         base_url = settings.ollama_url
+        max_attempts = 30
         async with httpx.AsyncClient() as client:
-            while True:
+            for attempt in range(1, max_attempts + 1):
                 try:
                     r = await client.get(f"{base_url}/api/tags", timeout=5.0)
                     if r.status_code == 200:
                         break
                 except Exception:
                     pass
-                logger.info("Waiting for Ollama at %s…", base_url)
+                logger.info("Waiting for Ollama at %s… (%d/%d)", base_url, attempt, max_attempts)
                 await asyncio.sleep(3)
+            else:
+                raise RuntimeError(
+                    f"Ollama not reachable at {base_url} after {max_attempts * 3}s. "
+                    "Check OLLAMA_URL and ensure the Ollama service is running."
+                )
 
         logger.info("Pulling text model %s and vision model %s", self._model, settings.vision_model)
         await self._pull_model(self._model)
