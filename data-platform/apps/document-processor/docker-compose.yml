@@ -7,9 +7,15 @@ services:
       - chroma_data:/chroma/chroma
     environment:
       IS_PERSISTENT: "TRUE"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.6.2
     ports:
       - "11434:11434"
     volumes:
@@ -17,6 +23,12 @@ services:
     environment:
       OLLAMA_NUM_PARALLEL: 1        # one inference at a time — cuts peak memory
       OLLAMA_MAX_LOADED_MODELS: 1   # evict previous model before loading a new one
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   app:
     build: .
@@ -36,8 +48,10 @@ services:
       - app_data:/app/data
       - hf_cache:/app/hf_cache   # persists gte-Qwen2 across restarts
     depends_on:
-      - chromadb
-      - ollama
+      chromadb:
+        condition: service_healthy
+      ollama:
+        condition: service_started
     restart: on-failure
 
 volumes:
