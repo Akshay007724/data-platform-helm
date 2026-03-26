@@ -1,4 +1,4 @@
-import { installMockFetch, MOCK_DOCS } from './mock-data.js';
+import { installMockFetch } from './mock-data.js';
 
 const DEMO_MODE = window.DEMO_MODE ||
   window.location.hostname.includes('github.io') ||
@@ -152,24 +152,34 @@ async function doSearch() {
   const btn = document.getElementById('search-btn');
   btn.textContent = '…'; btn.disabled = true;
 
-  const res = await fetch('/api/v1/search', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, limit: 10 }),
-  });
-  const data = await res.json();
-  btn.textContent = 'Search'; btn.disabled = false;
+  try {
+    const res = await fetch('/api/v1/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, limit: 10 }),
+    });
+    const data = await res.json();
 
-  const container = document.getElementById('search-results');
-  container.textContent = '';
-  if (!data.results?.length) {
+    const container = document.getElementById('search-results');
+    container.textContent = '';
+    if (!data.results?.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'No results found — try different keywords';
+      container.appendChild(empty);
+      return;
+    }
+    data.results.forEach(r => container.appendChild(renderResult(r)));
+  } catch (err) {
+    const container = document.getElementById('search-results');
+    container.textContent = '';
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = 'No results found — try different keywords';
+    empty.textContent = 'Search failed — ' + err.message;
     container.appendChild(empty);
-    return;
+  } finally {
+    btn.textContent = 'Search'; btn.disabled = false;
   }
-  data.results.forEach(r => container.appendChild(renderResult(r)));
 }
 
 document.getElementById('search-btn').addEventListener('click', doSearch);
