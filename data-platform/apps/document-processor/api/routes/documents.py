@@ -4,6 +4,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
 from fastapi.requests import Request
 
+from api.config import settings
 from models.schemas import DocumentListResponse, DocumentResponse, UploadResponse
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
@@ -35,6 +36,12 @@ async def upload_documents(
 
         doc_id = str(uuid.uuid4())
         file_bytes = await file.read()
+        max_bytes = settings.max_upload_size_mb * 1024 * 1024
+        if len(file_bytes) > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"{file.filename}: file size {len(file_bytes) // (1024*1024)} MB exceeds the {settings.max_upload_size_mb} MB limit",
+            )
         await doc_store.create(doc_id, file.filename, ext)
         background_tasks.add_task(processor.process, doc_id, file.filename, file_bytes)
         uploaded_ids.append(doc_id)

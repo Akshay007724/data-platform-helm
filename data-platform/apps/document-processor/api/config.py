@@ -32,5 +32,7 @@ class Settings(BaseSettings):
     # with GLM-OCR.  Image uploads always use GLM-OCR directly.
     ocr_scanned_threshold: int = 100
 
+    max_upload_size_mb: int = 50  # reject files larger than this
+
 
 settings = Settings()
