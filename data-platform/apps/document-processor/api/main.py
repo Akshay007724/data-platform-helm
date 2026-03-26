@@ -24,6 +24,7 @@ logging.basicConfig(level=settings.log_level.upper())
 logger = logging.getLogger(__name__)
 
 UI_PATH = Path(__file__).parent.parent / "ui" / "index.html"
+UI_ASSETS_PATH = Path(__file__).parent.parent / "ui" / "assets"
 
 
 @asynccontextmanager
@@ -80,6 +81,8 @@ app = FastAPI(
 app.include_router(documents.router)
 app.include_router(search.router)
 app.include_router(ask.router)
+
+app.mount("/assets", StaticFiles(directory=UI_ASSETS_PATH), name="assets")
 
 
 @app.get("/api/v1/health", response_model=HealthResponse, tags=["health"])
