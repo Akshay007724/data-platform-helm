@@ -80,20 +80,20 @@
   </aside>
 
   <div class="main">
-    <div class="tab-bar">
-      <div class="ptab active" data-panel="search">&#128269; Search</div>
-      <div class="ptab" data-panel="ask">&#128172; Ask</div>
+    <div class="tab-bar" role="tablist" aria-label="Document panel tabs">
+      <div class="ptab active" role="tab" tabindex="0" aria-selected="true" aria-controls="panel-search" data-panel="search">&#128269; Search</div>
+      <div class="ptab" role="tab" tabindex="0" aria-selected="false" aria-controls="panel-ask" data-panel="ask">&#128172; Ask</div>
     </div>
-    <div class="panel active" id="panel-search">
+    <div class="panel active" id="panel-search" role="tabpanel" aria-labelledby="tab-search">
       <div class="search-bar">
-        <input type="text" id="search-input" placeholder="Search across documents&#8230;" autocomplete="off"/>
+        <input type="text" id="search-input" aria-label="Search query" placeholder="Search across documents&#8230;" autocomplete="off"/>
         <button class="btn btn-primary" id="search-btn">Search</button>
       </div>
       <div id="search-results"><div class="empty">Enter a query to search your documents</div></div>
     </div>
-    <div class="panel" id="panel-ask">
+    <div class="panel" id="panel-ask" role="tabpanel" aria-labelledby="tab-ask">
       <div class="ask-bar">
-        <input type="text" id="ask-input" placeholder="Ask anything about your documents&#8230;" autocomplete="off"/>
+        <input type="text" id="ask-input" aria-label="Ask a question" placeholder="Ask anything about your documents&#8230;" autocomplete="off"/>
         <button class="btn btn-primary" id="ask-btn">Ask</button>
       </div>
       <div id="ask-output" style="display:none">
